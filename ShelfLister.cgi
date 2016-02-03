@@ -1,4 +1,4 @@
-#!/m1/shared/bin/perl
+#!/usr/bin/perl
 
 ########################################################################
 #
@@ -68,7 +68,7 @@
 
 use strict;
 
-unless (eval "use CGI") {
+unless (eval "use CGI qw(-oldstyle_urls :standard)") {
     ErrorConfig("fatal", "Missing Perl module", "$@") if $@;
 }
 
@@ -153,7 +153,7 @@ my $report_dir   = "$ShelfListerIni::output_directory";
 #  different name.  The "marked items" file will be given
 #  the same name, but with a ".txt" file extension.
 
-my $out_file     = fileparse("$this_script", qr/\.[^.]*/) . ".txt";
+my $out_file     = ($ENV{'REMOTE_USER'} ? $ENV{'REMOTE_USER'}.'-' : '') . fileparse("$this_script", qr/\.[^.]*/) . ".txt";
 
 #  Another alternative is just to hardcode the output filename
 #my $out_file     = "shelflister.inp";
@@ -287,18 +287,6 @@ my $record_number       = decode_utf8($query->param('record_no'));
 
 my $topic               = decode_utf8($query->param('topic'));
 my $show_page           = decode_utf8($query->param('show'));
-my @checked_records     = decode_utf8($query->param('check'));
-
-# De-dup and sort the list of checked records
-# (Legacy code, not currently used in ShelfLister.)
-if (@checked_records) {
-    my @uniq;
-    my %seen = ();
-    foreach my $i (@checked_records) {
-        push (@uniq, $i) unless $seen{$i}++;
-    }
-    @checked_records = (sort { $a <=> $b } @uniq);
-}
 
 # Input for saving to file
 
@@ -309,6 +297,8 @@ my $save_mfhd_id             = decode_utf8($query->param('save_mfhd_id'));
 my $save_item_id             = decode_utf8($query->param('save_item_id'));
 my $save_barcode             = decode_utf8($query->param('save_barcode'));
 my $save_call_no             = decode_utf8($query->param('save_call_no'));
+my $save_selected            = decode_utf8($query->param('save_selected'));
+my $empty                    = decode_utf8($query->param('empty'));
 
 if      ($show_page eq 's1') {
     PrintSearchForm("s1");
@@ -326,6 +316,57 @@ if      ($show_page eq 's1') {
     ShowHelp($topic);
 } elsif ($show_page eq 'mail') {
     ShowMailSave();
+} elsif ($empty) {
+    unlink($report_dir.'/'.$out_file);
+    print $query->redirect($query->url().'?'.$query->param('redirect'));
+} elsif ($save_selected) {
+    ConnectVygrDB();
+    my($sthi,$sthm);
+    $sthi = $dbh->prepare(ConstructSQLitem());
+    $sthm = $dbh->prepare(ConstructSQLmfhd());
+    foreach my $i ($query->param('check')) {
+        $save_bib_id = 0;
+        if ($i =~ m/^i[0-9]+$/) {
+            $i =~ s/^i//;
+            $sthi->execute($i) or warn $sthi->errstr();
+            if (my $rs = $sthi->fetchrow_hashref()) {
+                $save_bib_id = decode_utf8($rs->{'BIB_ID'});
+                $save_mfhd_id  = decode_utf8($rs->{'MFHD_ID'});
+                $save_item_id  = decode_utf8($rs->{'ITEM_ID'});
+                $save_barcode  = decode_utf8($rs->{'ITEM_BARCODE'});
+                $save_call_no  = decode_utf8($rs->{'DISPLAY_CALL_NO'});
+                if ($rs->{'ITEM_ENUM'}) {
+                    $save_call_no .= ' '.decode_utf8($rs->{'ITEM_ENUM'});
+                }
+                if ($rs->{'CRON'}) {
+                    $save_call_no .= ' '.decode_utf8($rs->{'CRON'});
+                }
+                if ($rs->{'YEAR'}) {
+                    $save_call_no .= ' '.decode_utf8($rs->{'YEAR'});
+                }
+                if ($rs->{'COPY_NUMBER'} && $rs->{'COPY_NUMBER'} > 1) {
+                    $save_call_no .= ' c.'.decode_utf8($rs->{'COPY_NUMBER'});
+                }
+            }
+        } elsif ($i =~ m/^m[0-9]+$/) {
+            $i =~ s/^m//;
+            $sthm->execute($i) or warn $sthi->errstr();
+            if (my $rs = $sthm->fetchrow_hashref()) {
+                $save_bib_id = decode_utf8($rs->{'BIB_ID'});
+                $save_mfhd_id  = decode_utf8($rs->{'MFHD_ID'});
+                $save_item_id  = '';
+                $save_barcode  = '';
+                $save_call_no  = decode_utf8($rs->{'DISPLAY_CALL_NO'});
+            }
+        }
+        if ($save_bib_id) {
+            SaveToFile(1);
+        }
+    }
+    $sthi->finish();
+    $sthm->finish();
+    DisconnectVygrDB();
+    print $query->redirect($query->url().'?'.$query->param('redirect'));
 } elsif ($save_status && $save_bib_id) {
     if ($save_action eq "delete") {
         DeleteFromFile();
@@ -1034,12 +1075,15 @@ sub GetShelfList {
         $location_display = $location_display_name;
     }
 
+    my($current_state) = $query->hidden('redirect', $query->query_string());
+
     print encode_utf8(qq(
     <h2>$Lang::string_shelf_list</h2>
     <div id="shelvingLocation">
     $Lang::string_location <span class="bold">$location_display</span>
     </div>
-    <form>
+    <form action="$this_script" method="post">
+    $current_state
     <table>
       <thead>
     $table_heading
@@ -1179,6 +1223,18 @@ sub GetShelfList {
     print qq(
       </tbody>
     </table>
+         <div data-role="fieldcontain" class="ui-field-contain ui-body ui-br">
+            <label for="save_status">$Lang::string_mark_selected_label</label>
+            <select name="save_status" size="1" id="save_status">
+            <option />
+    );
+    foreach my $i (@save_stati) { 
+	print "<option>$i</option>\n\t";
+    }
+    print qq(
+            </select>
+	    <input type="submit" class="button" data-inline="true" value="$Lang::string_mark_submit" name="save_selected">
+        </div>
     </form>
     );
 
@@ -1246,11 +1302,11 @@ sub ShowRecordMFHD {
     ConnectVygrDB();
 
     # Prepare the first preliminary SQL statement
-    my $sth = $dbh->prepare(ConstructSQLmfhd($record_number)) 
+    my $sth = $dbh->prepare(ConstructSQLmfhd()) 
 	|| die $dbh->errstr;
 
     # Run the SQL query
-    $sth->execute
+    $sth->execute($record_number)
 	|| die $dbh->errstr;
 
     PrintHead("$Lang::string_item_view");
@@ -1415,11 +1471,11 @@ sub ShowRecordItem {
     ConnectVygrDB();
 
     # Prepare the first preliminary SQL statement
-    my $sth = $dbh->prepare(ConstructSQLitem($record_number)) 
+    my $sth = $dbh->prepare(ConstructSQLitem()) 
 	|| die $dbh->errstr;
 
     # Run the SQL query
-    $sth->execute
+    $sth->execute($record_number)
 	|| die $dbh->errstr;
 
     PrintHead("$Lang::string_item_view");
@@ -1679,6 +1735,7 @@ sub PrintSaveForm {
 ##########################################################
 
 sub SaveToFile {
+    my($return) = @_;
     my ($second, 
 	$minute, 
 	$hour,
@@ -1703,6 +1760,8 @@ sub SaveToFile {
 
     print SAVEFILE "$year-$month-$day $hour:$minute:$second|$save_bib_id|$save_mfhd_id|$save_item_id|$save_barcode|$save_status|$save_call_no\n";
     close (SAVEFILE);
+
+    return if ($return);
 
     PrintHead();
     print qq(
@@ -1849,7 +1908,8 @@ sub PrintRow {
         }
     }
 
-    print qq(\n\t      <td><div class="checkbox"><input type="checkbox" title="Check box" name="check" value="null"></div></td>
+    my($recordid) = $item_id ? 'i'.$item_id : 'm'.$mfhd_id;
+    print qq(\n\t      <td><div class="checkbox"><input type="checkbox" title="Check box" name="check" value="$recordid"></div></td>
     );
 
     if ($item_id) {
@@ -1949,7 +2009,6 @@ sub DisconnectVygrDB {
 ##########################################################
 
 sub ConstructSQLitem{
-    my ($record_number) = @_;
     return ("
     select
 	mfhd_master.display_call_no,
@@ -1997,7 +2056,7 @@ sub ConstructSQLitem{
 	item.item_id=item_note.item_id(+) and
 	item_barcode.barcode_status=item_barcode_status.barcode_status_type and
 	item_status.item_status=item_status_type.item_status_type and
-	item.item_id='$record_number'
+	item.item_id=?
     ");
 }
 
@@ -2007,7 +2066,6 @@ sub ConstructSQLitem{
 ##########################################################
 
 sub ConstructSQLmfhd{
-    my ($record_number) = @_;
     return ("
     select
 	mfhd_master.display_call_no,
@@ -2027,7 +2085,7 @@ sub ConstructSQLmfhd{
 	bib_text.bib_id=bib_master.bib_id and
 	bib_master.bib_id=bib_mfhd.bib_id and
 	mfhd_master.mfhd_id=bib_mfhd.mfhd_id and
-	mfhd_master.mfhd_id='$record_number'
+	mfhd_master.mfhd_id=?
     ");
 }
 
@@ -2181,12 +2239,30 @@ $doc_type_def
     } else {
 	print qq(<body>\n);
     }
+    my($entries) = 0;
+    open (SAVEFILE, "<$report_dir/$out_file");
+    while (<SAVEFILE>) {
+        $entries++;
+    }
+    close SAVEFILE;
+    my($q) = new CGI("");
+    $q->param(-name=>'return',-value=>$query->query_string());
+    my($redirect) = $q->query_string();
+    my($redirect_value) = $query->hidden('redirect', $redirect);
     print qq(
   <div data-role="page">
     <div data-role="header" data-theme="b">
       <a $active_search data-icon="home" href="$this_script$search_link">$Lang::string_search</a>
       <h1>ShelfLister</h1>
       <a $active_help data-icon="info" href="$this_script?show=help">$Lang::string_help</a>
+    </div>
+    <div data-role="collapsible">
+        <h3>$Lang::string_mif_file</h3>
+        <p>$Lang::string_mif_entries : $entries.</p>
+        <form action="$this_script" method="post">
+            <input type="submit" name="empty" value="$Lang::string_empty_mif" />
+            $redirect_value
+        </form>
     </div>
     <div data-role="content">
     );

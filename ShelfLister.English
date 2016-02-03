@@ -90,6 +90,9 @@ $string_help     = decode_utf8("Help");
 $string_next     = decode_utf8("Next");
 $string_prev     = decode_utf8("Previous");
 
+$string_mif_entries     = decode_utf8("Current Entries");
+$string_empty_mif       = decode_utf8("Erase all entries");
+
 
 ##########################################################
 #  Barcode and call number entry forms 
@@ -171,6 +174,7 @@ $string_checkbox         = decode_utf8("Select to mark or mail");
 $string_item_view          = decode_utf8("Item View");
 $string_back               = decode_utf8("Back");
 $string_mark_status_label  = decode_utf8("Mark as:");
+$string_mark_selected_label= decode_utf8("Mark Selected as:");
 $string_barcode            = decode_utf8("barcode");
 $string_item_note          = decode_utf8("Item note");
 $string_look_up_in         = decode_utf8("Look up in:");
