@@ -367,15 +367,15 @@ if      ($show_page eq 's1') {
     $sthm->finish();
     DisconnectVygrDB();
     print $query->redirect($query->url().'?'.$query->param('redirect'));
-} elsif ($save_status && $save_bib_id) {
+}  elsif ($save_status && $save_bib_id) {
     if ($save_action eq "delete") {
         DeleteFromFile();
     } elsif ($save_action eq "update") {
         DeleteFromFile();
         SaveToFile();
-    } else {
+   } else {
         SaveToFile();
-    }
+   }
 } elsif ($show_page eq 'random') {
     GenRandomList();
 } else {
@@ -1267,7 +1267,7 @@ sub GetShelfList {
     }
     $prev_next .= qq(\n  </fieldset>);
 
-    if ($prev_next) {
+   if ($prev_next) {
         print qq($prev_next);
     }
     if ($true_count < 1 ) {
@@ -2225,10 +2225,10 @@ $doc_type_def
   <meta name="dcterms.source"     content="http://rocky.uta.edu/doran/shelflister/" />
   <meta name="dcterms.publisher"  content="University of Texas at Arlington Library" /> 
   <meta name="dcterms.rights"     content="Copyright 2003-2012 University of Texas at Arlington" />
-  <link rel="stylesheet" href="http://code.jquery.com/mobile/1.0/jquery.mobile-1.0.min.css" />
-  <script src="http://code.jquery.com/jquery-1.6.4.min.js"></script>
+  <link rel="stylesheet" href="//code.jquery.com/mobile/1.0/jquery.mobile-1.0.min.css" />
+  <script src="//code.jquery.com/jquery-1.6.4.min.js"></script>
   $jqm_overrides
-  <script src="http://code.jquery.com/mobile/1.0.1/jquery.mobile-1.0.1.min.js"></script>
+  <script src="//code.jquery.com/mobile/1.0.1/jquery.mobile-1.0.1.min.js"></script>
   $css_main
 </head>
 );
